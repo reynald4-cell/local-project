@@ -1,0 +1,6 @@
+{
+  "name": "Philippine Mangrove Kayak Guide",
+  "description": "Aesthetic coastal kayak guide for identifying Philippine mangrove species (Bakawan, Api-api, Pagatpat), scanning tree QR tags, and geo-logging eco-health in remote offline waters.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
