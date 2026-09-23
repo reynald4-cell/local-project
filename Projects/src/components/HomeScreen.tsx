@@ -14,7 +14,7 @@ import {
   Camera,
   Waves
 } from 'lucide-react';
-import { TreeTagData, GeoTaggedObservation } from '../types';
+import { TreeTagData, GeoTaggedObservation, GpsStatus } from '../types';
 
 interface HomeScreenProps {
   onNavigate: (action: 'species' | 'scanner' | 'record' | 'map' | 'data' | 'assistant') => void;
@@ -25,7 +25,7 @@ interface HomeScreenProps {
   isSyncing: boolean;
   coords: { lat: number; lng: number } | null;
   onGetLocation: () => void;
-  isLocating: boolean;
+  gpsStatus: GpsStatus;
   treeTags: TreeTagData[];
   observations: GeoTaggedObservation[];
 }
@@ -39,10 +39,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   isSyncing,
   coords,
   onGetLocation,
-  isLocating,
+  gpsStatus,
   treeTags,
   observations,
 }) => {
+  const isLocating = gpsStatus.state === 'acquiring';
+  const hasGpsError = gpsStatus.state === 'error';
+
   return (
     <div className="space-y-4 sm:space-y-5 max-w-4xl mx-auto pb-16 animate-in fade-in duration-200">
       {/* Top Welcome Card with Earth Gradient */}
@@ -104,20 +107,31 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
 
         {/* Compact GPS status */}
-        <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px] text-emerald-200/90">
-          <div className="flex items-center space-x-1.5">
-            <Compass className="w-3.5 h-3.5 text-amber-300" />
-            <span className="font-mono">
-              {coords ? `${coords.lat.toFixed(4)}°N, ${coords.lng.toFixed(4)}°E` : 'Locating GPS...'}
-            </span>
+        <div className="pt-2 border-t border-white/10 space-y-1.5 text-[11px] text-emerald-200/90">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center space-x-1.5">
+              <Compass className={`w-3.5 h-3.5 ${hasGpsError ? 'text-amber-400' : 'text-amber-300'}`} />
+              <span className="font-mono">
+                {coords ? `${coords.lat.toFixed(4)}°N, ${coords.lng.toFixed(4)}°E` : 'Coordinates unavailable'}
+              </span>
+            </div>
+            <button
+              onClick={onGetLocation}
+              disabled={isLocating}
+              aria-describedby="home-gps-status"
+              className="text-amber-200 hover:text-amber-100 underline decoration-amber-400 text-[11px] font-medium disabled:cursor-wait disabled:opacity-70"
+            >
+              {isLocating ? 'Acquiring...' : hasGpsError ? 'Retry GPS' : 'Update GPS'}
+            </button>
           </div>
-          <button
-            onClick={onGetLocation}
-            disabled={isLocating}
-            className="text-amber-200 hover:text-amber-100 underline decoration-amber-400 text-[11px] font-medium"
+          <p
+            id="home-gps-status"
+            role={hasGpsError ? 'alert' : 'status'}
+            aria-live={hasGpsError ? 'assertive' : 'polite'}
+            className={hasGpsError ? 'text-amber-200' : 'text-emerald-100/75'}
           >
-            {isLocating ? 'Acquiring...' : 'Update GPS'}
-          </button>
+            {gpsStatus.message}
+          </p>
         </div>
       </div>
 
