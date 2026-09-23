@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   Sparkles, 
   Send, 
+  Trash2,
   Volume2, 
   VolumeX, 
   TreePine, 
@@ -15,6 +16,54 @@ import {
 interface GuideAssistantProps {
   isOffline: boolean;
 }
+
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+const STORAGE_KEY = 'KUYA_DAN_CHAT_HISTORY_V1';
+const MAX_RETAINED_MESSAGES = 50;
+const MAX_MESSAGE_LENGTH = 10_000;
+const WELCOME_MESSAGE: ChatMessage = {
+  role: 'assistant',
+  text: "Magandang araw paddler! I'm Kuya Dan, your Philippine kayak guide and mangrove naturalist. Whether you want to know how Bakawan roots withstand typhoons, why fireflies love Pagatpat trees, or how to measure water salinity with a refractometer, ask away!"
+};
+
+const isValidMessage = (value: unknown): value is ChatMessage => {
+  if (!value || typeof value !== 'object') return false;
+
+  const message = value as Record<string, unknown>;
+  return (
+    (message.role === 'user' || message.role === 'assistant') &&
+    typeof message.text === 'string' &&
+    message.text.trim().length > 0 &&
+    message.text.length <= MAX_MESSAGE_LENGTH
+  );
+};
+
+const loadMessages = (): ChatMessage[] => {
+  if (typeof window === 'undefined') return [WELCOME_MESSAGE];
+
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (!saved) return [WELCOME_MESSAGE];
+
+    const parsed: unknown = JSON.parse(saved);
+    if (!Array.isArray(parsed) || parsed.length === 0 || !parsed.every(isValidMessage)) {
+      window.localStorage.removeItem(STORAGE_KEY);
+      return [WELCOME_MESSAGE];
+    }
+
+    return parsed.slice(-MAX_RETAINED_MESSAGES);
+  } catch (error) {
+    console.warn('Unable to restore Kuya Dan conversation history.', error);
+    return [WELCOME_MESSAGE];
+  }
+};
+
+const appendMessage = (messages: ChatMessage[], message: ChatMessage) =>
+  [...messages, message].slice(-MAX_RETAINED_MESSAGES);
 
 const QUICK_QUESTIONS = [
   'How do Bakawan stilt roots protect Philippine coastlines from typhoons?',
@@ -46,44 +95,69 @@ const OFFLINE_KNOWLEDGE_BASE: Record<string, string> = {
 };
 
 export const GuideAssistant: React.FC<GuideAssistantProps> = ({ isOffline }) => {
-  const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([
-    {
-      role: 'assistant',
-      text: "Magandang araw paddler! I'm Kuya Dan, your Philippine kayak guide and mangrove naturalist. Whether you want to know how Bakawan roots withstand typhoons, why fireflies love Pagatpat trees, or how to measure water salinity with a refractometer, ask away!"
-    }
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const requestIdRef = useRef(0);
+  const offlineTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(messages.slice(-MAX_RETAINED_MESSAGES))
+      );
+    } catch (error) {
+      console.warn('Unable to save Kuya Dan conversation history.', error);
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      requestIdRef.current += 1;
+      if (offlineTimeoutRef.current) clearTimeout(offlineTimeoutRef.current);
+      abortControllerRef.current?.abort();
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    };
+  }, []);
 
   const handleAsk = async (queryText?: string) => {
     const q = (queryText || inputText).trim();
     if (!q) return;
 
+    const requestId = ++requestIdRef.current;
     const normalizedQuestion = q.toLowerCase();
     const offlineKnowledgeMatch = Object.entries(OFFLINE_KNOWLEDGE_BASE).find(
       ([question]) => question.toLowerCase() === normalizedQuestion
     );
 
-    setMessages((prev) => [...prev, { role: 'user', text: q }]);
+    setMessages((prev) => appendMessage(prev, { role: 'user', text: q }));
     setInputText('');
     setIsLoading(true);
 
     // If offline or matched in offline KB
     if (isOffline || offlineKnowledgeMatch) {
-      setTimeout(() => {
+      offlineTimeoutRef.current = setTimeout(() => {
+        if (requestId !== requestIdRef.current) return;
         const answer = offlineKnowledgeMatch?.[1] ||
           "As an offline kayak guide in the Philippine mangrove ecosystem, I can verify that native halophytes like Bakawan, Pagatpat, Api-api, and Pototan are crucial for coastal protection and fish nurseries. Paddle with light strokes and observe the distinct root structures: stilt roots for Bakawan, pencil pneumatophores for Api-api, and knee loops for Pototan!";
-        setMessages((prev) => [...prev, { role: 'assistant', text: answer }]);
+        setMessages((prev) => appendMessage(prev, { role: 'assistant', text: answer }));
         setIsLoading(false);
+        offlineTimeoutRef.current = null;
       }, 450);
       return;
     }
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     try {
       const res = await fetch('/api/guide-assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortController.signal,
         body: JSON.stringify({
           question: q,
           context: 'Kayaking in Del Carmen, Siargao Mangrove Reserve, observing Philippine mangrove species including Bakawan, Pagatpat, Api-api, Pototan, mud crabs, and fireflies.'
@@ -91,15 +165,49 @@ export const GuideAssistant: React.FC<GuideAssistantProps> = ({ isOffline }) => 
       });
 
       if (!res.ok) throw new Error('API unavailable');
-      const data = await res.json();
-      setMessages((prev) => [...prev, { role: 'assistant', text: data.answer }]);
-    } catch {
+      const data: unknown = await res.json();
+      if (
+        !data ||
+        typeof data !== 'object' ||
+        !('answer' in data) ||
+        typeof data.answer !== 'string' ||
+        !data.answer.trim() ||
+        data.answer.length > MAX_MESSAGE_LENGTH
+      ) {
+        throw new Error('Invalid API response');
+      }
+      const answer = data.answer;
+      if (requestId !== requestIdRef.current) return;
+      setMessages((prev) => appendMessage(prev, { role: 'assistant', text: answer }));
+    } catch (error) {
+      if (abortController.signal.aborted || requestId !== requestIdRef.current) return;
+      console.warn('Unable to reach the Kuya Dan guide service; using offline guidance.', error);
       const fallback = offlineKnowledgeMatch?.[1] ||
         "In Philippine coastal wetlands, Bakawan (Rhizophora) excludes salt at the root membranes, Api-api (Avicennia) excretes salt on leaf undersides, and Pagatpat (Sonneratia) hosts bio-luminescent fireflies. Check our Identify tab for full botanical dossiers!";
-      setMessages((prev) => [...prev, { role: 'assistant', text: fallback }]);
+      setMessages((prev) => appendMessage(prev, { role: 'assistant', text: fallback }));
     } finally {
-      setIsLoading(false);
+      if (requestId === requestIdRef.current) {
+        setIsLoading(false);
+        abortControllerRef.current = null;
+      }
     }
+  };
+
+  const clearConversation = () => {
+    if (!window.confirm('Clear your conversation with Kuya Dan? This cannot be undone.')) return;
+
+    requestIdRef.current += 1;
+    if (offlineTimeoutRef.current) {
+      clearTimeout(offlineTimeoutRef.current);
+      offlineTimeoutRef.current = null;
+    }
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    setIsLoading(false);
+    setInputText('');
+    setMessages([WELCOME_MESSAGE]);
   };
 
   const speakLastMessage = (text: string) => {
@@ -204,6 +312,18 @@ export const GuideAssistant: React.FC<GuideAssistantProps> = ({ isOffline }) => 
       </div>
 
       {/* Chat Input */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={clearConversation}
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-stone-600 transition hover:bg-red-50 hover:text-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+          aria-label="Clear conversation history"
+        >
+          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+          Clear conversation
+        </button>
+      </div>
+
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -215,6 +335,7 @@ export const GuideAssistant: React.FC<GuideAssistantProps> = ({ isOffline }) => 
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
+          maxLength={MAX_MESSAGE_LENGTH}
           placeholder="Ask Kuya Dan about Philippine mangroves, roots, wildlife, or safe kayaking..."
           className="flex-1 text-xs p-3 rounded-xl border border-stone-300 focus:outline-emerald-700 bg-white shadow-2xs"
         />
