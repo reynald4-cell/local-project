@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   TreePine, 
   Search, 
@@ -12,10 +12,36 @@ import {
   Layers, 
   Info, 
   X, 
-  Volume2
+  Volume2,
+  Star
 } from 'lucide-react';
 import { MangroveSpecies } from '../types';
 import { MANGROVE_SPECIES, identifySpeciesOffline } from '../data/mangroveDatabase';
+
+const FAVORITE_SPECIES_STORAGE_KEY = 'MANGROVE_FAVORITE_SPECIES_V1';
+const speciesIds = new Set(MANGROVE_SPECIES.map((species) => species.id));
+
+const loadFavoriteSpeciesIds = (): string[] => {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const storedValue = window.localStorage.getItem(FAVORITE_SPECIES_STORAGE_KEY);
+    if (!storedValue) return [];
+
+    const parsedValue: unknown = JSON.parse(storedValue);
+    if (!Array.isArray(parsedValue)) return [];
+
+    return [...new Set(
+      parsedValue.filter(
+        (speciesId): speciesId is string =>
+          typeof speciesId === 'string' && speciesIds.has(speciesId)
+      )
+    )];
+  } catch (error) {
+    console.warn('Unable to load favorite species:', error);
+    return [];
+  }
+};
 
 interface SpeciesGuideProps {
   isOffline: boolean;
@@ -25,6 +51,8 @@ interface SpeciesGuideProps {
 export const SpeciesGuide: React.FC<SpeciesGuideProps> = ({ isOffline, onSelectForLog }) => {
   const [activeSubTab, setActiveSubTab] = useState<'key' | 'ai' | 'browse'>('key');
   const [selectedSpecies, setSelectedSpecies] = useState<MangroveSpecies | null>(null);
+  const [favoriteSpeciesIds, setFavoriteSpeciesIds] = useState<string[]>(loadFavoriteSpeciesIds);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
   // Key Filter States
   const [rootFilter, setRootFilter] = useState<string>('');
@@ -38,6 +66,54 @@ export const SpeciesGuide: React.FC<SpeciesGuideProps> = ({ isOffline, onSelectF
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [aiResult, setAiResult] = useState<any>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        FAVORITE_SPECIES_STORAGE_KEY,
+        JSON.stringify(favoriteSpeciesIds)
+      );
+    } catch (error) {
+      console.error('Unable to save favorite species:', error);
+    }
+  }, [favoriteSpeciesIds]);
+
+  const favoriteSpeciesIdSet = new Set(favoriteSpeciesIds);
+  const browsedSpecies = showFavoritesOnly
+    ? MANGROVE_SPECIES.filter((species) => favoriteSpeciesIdSet.has(species.id))
+    : MANGROVE_SPECIES;
+
+  const toggleFavoriteSpecies = (speciesId: string) => {
+    setFavoriteSpeciesIds((currentIds) =>
+      currentIds.includes(speciesId)
+        ? currentIds.filter((id) => id !== speciesId)
+        : [...currentIds, speciesId]
+    );
+  };
+
+  const renderFavoriteButton = (species: MangroveSpecies, darkBackground = false) => {
+    const isFavorite = favoriteSpeciesIdSet.has(species.id);
+    const action = isFavorite ? 'Remove from field shortlist' : 'Add to field shortlist';
+
+    return (
+      <button
+        type="button"
+        onClick={() => toggleFavoriteSpecies(species.id)}
+        aria-label={`${action}: ${species.commonName}`}
+        aria-pressed={isFavorite}
+        title={action}
+        className={`p-2 rounded-lg border transition ${
+          isFavorite
+            ? 'bg-amber-100 border-amber-300 text-amber-700 hover:bg-amber-200'
+            : darkBackground
+              ? 'bg-slate-800 border-slate-700 text-slate-300 hover:text-amber-300'
+              : 'bg-slate-100 border-slate-200 text-slate-500 hover:text-amber-600 hover:border-amber-300'
+        }`}
+      >
+        <Star className={`w-4 h-4 ${isFavorite ? 'fill-current' : ''}`} aria-hidden="true" />
+      </button>
+    );
+  };
 
   // Quick offline key matching calculation
   const keyResults = identifySpeciesOffline({
@@ -360,11 +436,14 @@ export const SpeciesGuide: React.FC<SpeciesGuideProps> = ({ isOffline, onSelectF
                             {species.scientificName} &bull; {species.family}
                           </p>
                         </div>
-                        <div className="text-right">
-                          <span className="text-lg font-black text-emerald-700">
-                            {confidence}%
-                          </span>
-                          <span className="block text-[10px] text-slate-500 font-medium">match</span>
+                        <div className="flex items-start gap-2">
+                          <div className="text-right">
+                            <span className="text-lg font-black text-emerald-700">
+                              {confidence}%
+                            </span>
+                            <span className="block text-[10px] text-slate-500 font-medium">match</span>
+                          </div>
+                          {renderFavoriteButton(species)}
                         </div>
                       </div>
 
@@ -607,80 +686,133 @@ export const SpeciesGuide: React.FC<SpeciesGuideProps> = ({ isOffline, onSelectF
 
       {/* SUBTAB 3: ALL SPECIES BROWSE */}
       {activeSubTab === 'browse' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {MANGROVE_SPECIES.map((species) => (
-            <div
-              key={species.id}
-              className="bg-white rounded-xl border border-slate-200 shadow-xs hover:shadow-md transition overflow-hidden flex flex-col justify-between"
-            >
-              <div className="p-5 space-y-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${species.badgeBg}`}>
-                      {species.iucnStatus}
-                    </span>
-                    <h3 className="text-base font-bold text-stone-900 mt-1">
-                      {species.localName}
-                    </h3>
-                    <p className="text-xs text-stone-500">
-                      {species.commonName}
-                    </p>
-                    <p className="text-xs italic text-emerald-800 font-serif font-medium">
-                      {species.scientificName}
-                    </p>
-                  </div>
-                  <div className="p-2 rounded-lg bg-slate-100 text-slate-700">
-                    <TreePine className="w-5 h-5 text-emerald-700" />
-                  </div>
-                </div>
-
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  {species.rootDescription}
-                </p>
-
-                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Tidal Zone:</span>
-                    <span className="font-semibold text-slate-800 capitalize">
-                      {species.dominantZone.replace('_', ' ')}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Salinity:</span>
-                    <span className="font-semibold text-slate-800">
-                      Up to {species.salinityMaxPpt} ppt
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Blue Carbon:</span>
-                    <span className="font-semibold text-emerald-700">
-                      {species.blueCarbonRateKgPerYear} kg CO₂/yr
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-[11px] font-bold text-slate-700 block mb-1">Companion Estuarine Wildlife:</span>
-                  <div className="flex flex-wrap gap-1">
-                    {species.companionWildlife.slice(0, 3).map((w, idx) => (
-                      <span key={idx} className="px-1.5 py-0.5 rounded bg-slate-100 text-[10px] text-slate-600 border border-slate-200">
-                        {w}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
-                <button
-                  onClick={() => setSelectedSpecies(species)}
-                  className="w-full py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold transition"
-                >
-                  View Full Field Dossier
-                </button>
-              </div>
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white rounded-xl border border-slate-200 p-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Field shortlist</h3>
+              <p className="text-xs text-slate-500">
+                {favoriteSpeciesIds.length} species saved on this device
+              </p>
             </div>
-          ))}
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg self-start sm:self-auto" role="group" aria-label="Filter species list">
+              <button
+                type="button"
+                onClick={() => setShowFavoritesOnly(false)}
+                aria-pressed={!showFavoritesOnly}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+                  !showFavoritesOnly
+                    ? 'bg-white text-emerald-800 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                All species
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowFavoritesOnly(true)}
+                aria-pressed={showFavoritesOnly}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition flex items-center gap-1.5 ${
+                  showFavoritesOnly
+                    ? 'bg-white text-amber-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Star className={`w-3.5 h-3.5 ${showFavoritesOnly ? 'fill-current' : ''}`} aria-hidden="true" />
+                Shortlist ({favoriteSpeciesIds.length})
+              </button>
+            </div>
+          </div>
+
+          {browsedSpecies.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {browsedSpecies.map((species) => (
+                <div
+                  key={species.id}
+                  className="bg-white rounded-xl border border-slate-200 shadow-xs hover:shadow-md transition overflow-hidden flex flex-col justify-between"
+                >
+                  <div className="p-5 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${species.badgeBg}`}>
+                          {species.iucnStatus}
+                        </span>
+                        <h3 className="text-base font-bold text-stone-900 mt-1">
+                          {species.localName}
+                        </h3>
+                        <p className="text-xs text-stone-500">
+                          {species.commonName}
+                        </p>
+                        <p className="text-xs italic text-emerald-800 font-serif font-medium">
+                          {species.scientificName}
+                        </p>
+                      </div>
+                      {renderFavoriteButton(species)}
+                    </div>
+
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      {species.rootDescription}
+                    </p>
+
+                    <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Tidal Zone:</span>
+                        <span className="font-semibold text-slate-800 capitalize">
+                          {species.dominantZone.replace('_', ' ')}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Salinity:</span>
+                        <span className="font-semibold text-slate-800">
+                          Up to {species.salinityMaxPpt} ppt
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Blue Carbon:</span>
+                        <span className="font-semibold text-emerald-700">
+                          {species.blueCarbonRateKgPerYear} kg CO₂/yr
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-700 block mb-1">Companion Estuarine Wildlife:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {species.companionWildlife.slice(0, 3).map((w, idx) => (
+                          <span key={idx} className="px-1.5 py-0.5 rounded bg-slate-100 text-[10px] text-slate-600 border border-slate-200">
+                            {w}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => setSelectedSpecies(species)}
+                      className="w-full py-1.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold transition"
+                    >
+                      View Full Field Dossier
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border-2 border-dashed border-slate-200 py-12 px-6 text-center">
+              <Star className="w-9 h-9 text-slate-300 mx-auto mb-2" aria-hidden="true" />
+              <h3 className="text-sm font-bold text-slate-700">Your field shortlist is empty</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Show all species, then select a star to save specimens for quick field reference.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowFavoritesOnly(false)}
+                className="mt-3 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold transition"
+              >
+                Browse all species
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -702,12 +834,16 @@ export const SpeciesGuide: React.FC<SpeciesGuideProps> = ({ isOffline, onSelectF
                   {selectedSpecies.scientificName} &bull; Family {selectedSpecies.family}
                 </p>
               </div>
-              <button
-                onClick={() => setSelectedSpecies(null)}
-                className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {renderFavoriteButton(selectedSpecies, true)}
+                <button
+                  onClick={() => setSelectedSpecies(null)}
+                  aria-label="Close species dossier"
+                  className="p-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                >
+                  <X className="w-4 h-4" aria-hidden="true" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Body */}
