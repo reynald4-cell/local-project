@@ -1,1 +1,152 @@
 @import "tailwindcss";
+
+.theme-field-mode {
+  --field-black: #070a08;
+  --field-panel: #111713;
+  --field-raised: #19221b;
+  --field-line: #526052;
+  --field-ink: #f5f7e8;
+  --field-muted: #becab8;
+  --field-signal: #d7ff42;
+  --field-alert: #ff9d2e;
+  background:
+    linear-gradient(rgb(215 255 66 / 3%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(215 255 66 / 3%) 1px, transparent 1px),
+    var(--field-black) !important;
+  background-size: 32px 32px !important;
+  color: var(--field-ink) !important;
+}
+
+.theme-field-mode header,
+.theme-field-mode footer {
+  background: #050806 !important;
+  border-color: var(--field-signal) !important;
+  color: var(--field-ink) !important;
+  box-shadow: none !important;
+}
+
+.theme-field-mode header > div:first-child {
+  background: var(--field-signal) !important;
+  border-color: var(--field-signal) !important;
+  color: var(--field-black) !important;
+}
+
+.theme-field-mode header > div:first-child [class*="text-"],
+.theme-field-mode header > div:first-child button {
+  color: var(--field-black) !important;
+}
+
+.theme-field-mode footer {
+  color: var(--field-signal) !important;
+}
+
+.theme-field-mode main {
+  padding-top: 1.5rem;
+}
+
+.theme-field-mode [class*="bg-gradient-to-br"],
+.theme-field-mode [class*="bg-gradient-to-r"] {
+  background-image: linear-gradient(118deg, #182019 0%, #0b100c 70%) !important;
+  border-color: var(--field-signal) !important;
+  color: var(--field-ink) !important;
+  box-shadow: 8px 8px 0 rgb(215 255 66 / 18%) !important;
+}
+
+.theme-field-mode [class*="bg-white"],
+.theme-field-mode [class*="bg-stone-50"],
+.theme-field-mode [class*="bg-emerald-50"],
+.theme-field-mode [class*="bg-teal-50"],
+.theme-field-mode [class*="bg-amber-50"] {
+  background-color: var(--field-panel) !important;
+}
+
+.theme-field-mode [class*="bg-emerald-1"],
+.theme-field-mode [class*="bg-teal-1"],
+.theme-field-mode [class*="bg-amber-1"] {
+  background-color: var(--field-raised) !important;
+}
+
+.theme-field-mode [class*="bg-emerald-8"],
+.theme-field-mode [class*="bg-emerald-9"],
+.theme-field-mode [class*="bg-[#1"],
+.theme-field-mode [class*="bg-[#2"] {
+  background-color: #263225 !important;
+}
+
+.theme-field-mode [class*="bg-amber-4"],
+.theme-field-mode [class*="bg-amber-5"] {
+  background-color: var(--field-alert) !important;
+  color: var(--field-black) !important;
+}
+
+.theme-field-mode [class*="text-white"],
+.theme-field-mode [class*="text-[#fbf8f3]"],
+.theme-field-mode [class*="text-stone-8"],
+.theme-field-mode [class*="text-stone-9"],
+.theme-field-mode [class*="text-emerald-9"],
+.theme-field-mode [class*="text-amber-9"],
+.theme-field-mode [class*="text-teal-9"] {
+  color: var(--field-ink) !important;
+}
+
+.theme-field-mode [class*="text-stone-4"],
+.theme-field-mode [class*="text-stone-5"],
+.theme-field-mode [class*="text-stone-6"],
+.theme-field-mode [class*="text-emerald-1"],
+.theme-field-mode [class*="text-emerald-2"],
+.theme-field-mode [class*="text-emerald-7"],
+.theme-field-mode [class*="text-emerald-8"],
+.theme-field-mode [class*="text-teal-7"],
+.theme-field-mode [class*="text-teal-8"] {
+  color: var(--field-muted) !important;
+}
+
+.theme-field-mode h1,
+.theme-field-mode h2,
+.theme-field-mode h3 {
+  color: var(--field-ink) !important;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.theme-field-mode button,
+.theme-field-mode input,
+.theme-field-mode textarea,
+.theme-field-mode select,
+.theme-field-mode [class*="rounded-"] {
+  border-radius: 0.2rem !important;
+}
+
+.theme-field-mode main button,
+.theme-field-mode main input,
+.theme-field-mode main textarea,
+.theme-field-mode main select,
+.theme-field-mode main [class*="border"] {
+  border-color: var(--field-line) !important;
+}
+
+.theme-field-mode main button[class*="shadow"],
+.theme-field-mode main [class*="rounded-2xl"] {
+  box-shadow: 4px 4px 0 rgb(0 0 0 / 55%) !important;
+}
+
+.theme-field-mode button:hover,
+.theme-field-mode button:focus-visible {
+  border-color: var(--field-signal) !important;
+  outline-color: var(--field-signal) !important;
+}
+
+.theme-field-mode input,
+.theme-field-mode textarea,
+.theme-field-mode select {
+  background: #080c09 !important;
+  color: var(--field-ink) !important;
+}
+
+.theme-field-mode input[type="range"] {
+  accent-color: var(--field-signal);
+}
+
+.theme-field-mode svg {
+  color: var(--field-signal);
+}
