@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   MapPin, 
   Camera, 
@@ -22,6 +22,127 @@ import {
 import { GeoTaggedObservation, CoastalZone, MangroveSpecies, TreeTagData } from '../types';
 import { MANGROVE_SPECIES, calculateMHI } from '../data/mangroveDatabase';
 
+const OBSERVATION_DRAFT_STORAGE_KEY = 'MANGROVE_OBSERVATION_DRAFT_V1';
+const DEFAULT_TITLE = 'Del Carmen Lagoon Eco-Health Transect';
+const DEFAULT_WATERWAY_NAME = 'Sugba Lagoon Cut • Del Carmen';
+const DEFAULT_LAT = 9.8655;
+const DEFAULT_LNG = 125.9642;
+const DEFAULT_WILDLIFE = ['Mud Crabs (Alimango)', 'Danggit Fry (Rabbitfish)'];
+const DEFAULT_RESTORATION_ACTION = 'Routine health survey';
+const DEFAULT_GUIDE_NAME = 'Kuya Dan (Lead Siargao Kayak Naturalist)';
+
+type SedimentType = GeoTaggedObservation['environmentalData']['sedimentType'];
+type TrashLevel = GeoTaggedObservation['environmentalData']['trashLevel'];
+type ErosionRisk = GeoTaggedObservation['environmentalData']['erosionRisk'];
+
+interface ObservationDraftFields {
+  title: string;
+  speciesId: string;
+  treeTagId: string;
+  waterwayZone: CoastalZone;
+  waterwayName: string;
+  lat: number;
+  lng: number;
+  salinityPpt: number;
+  canopyCoverPercent: number;
+  sedimentType: SedimentType;
+  selectedWildlife: string[];
+  trashLevel: TrashLevel;
+  erosionRisk: ErosionRisk;
+  restorationAction: string;
+  propagulesPlantedCount: number;
+  notes: string;
+  guideName: string;
+  photoUrl: string | null;
+}
+
+interface ObservationDraft {
+  version: 1;
+  updatedAt: string;
+  fields: ObservationDraftFields;
+}
+
+const isString = (value: unknown): value is string => typeof value === 'string';
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+const isOneOf = <T extends string>(value: unknown, options: readonly T[]): value is T =>
+  typeof value === 'string' && options.includes(value as T);
+
+const isValidDraftFields = (value: unknown): value is ObservationDraftFields => {
+  if (!value || typeof value !== 'object') return false;
+
+  const fields = value as Record<string, unknown>;
+  return (
+    isString(fields.title) &&
+    isString(fields.speciesId) &&
+    MANGROVE_SPECIES.some((species) => species.id === fields.speciesId) &&
+    isString(fields.treeTagId) &&
+    isOneOf(fields.waterwayZone, ['seaward_fringe', 'mid_intertidal', 'inland_basin', 'riverine_channel', 'coastal_transition']) &&
+    isString(fields.waterwayName) &&
+    isFiniteNumber(fields.lat) &&
+    fields.lat >= -90 &&
+    fields.lat <= 90 &&
+    isFiniteNumber(fields.lng) &&
+    fields.lng >= -180 &&
+    fields.lng <= 180 &&
+    isFiniteNumber(fields.salinityPpt) &&
+    fields.salinityPpt >= 0 &&
+    fields.salinityPpt <= 50 &&
+    isFiniteNumber(fields.canopyCoverPercent) &&
+    fields.canopyCoverPercent >= 10 &&
+    fields.canopyCoverPercent <= 100 &&
+    isOneOf(fields.sedimentType, ['fine_mud', 'sandy_peat', 'coarse_sand', 'anoxic_ooze']) &&
+    Array.isArray(fields.selectedWildlife) &&
+    fields.selectedWildlife.every(isString) &&
+    isOneOf(fields.trashLevel, ['none', 'light', 'moderate', 'severe']) &&
+    isOneOf(fields.erosionRisk, ['low', 'moderate', 'critical']) &&
+    isString(fields.restorationAction) &&
+    isFiniteNumber(fields.propagulesPlantedCount) &&
+    fields.propagulesPlantedCount >= 0 &&
+    isString(fields.notes) &&
+    isString(fields.guideName) &&
+    (fields.photoUrl === null || isString(fields.photoUrl))
+  );
+};
+
+const loadObservationDraft = (): ObservationDraft | null => {
+  try {
+    const storedDraft = localStorage.getItem(OBSERVATION_DRAFT_STORAGE_KEY);
+    if (!storedDraft) return null;
+
+    const parsed: unknown = JSON.parse(storedDraft);
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      (parsed as Record<string, unknown>).version === 1 &&
+      isString((parsed as Record<string, unknown>).updatedAt) &&
+      !Number.isNaN(Date.parse((parsed as Record<string, unknown>).updatedAt as string)) &&
+      isValidDraftFields((parsed as Record<string, unknown>).fields)
+    ) {
+      return parsed as ObservationDraft;
+    }
+
+    localStorage.removeItem(OBSERVATION_DRAFT_STORAGE_KEY);
+  } catch (error) {
+    console.warn('Unable to restore observation draft:', error);
+    try {
+      localStorage.removeItem(OBSERVATION_DRAFT_STORAGE_KEY);
+    } catch {
+      // Storage may be unavailable; the form remains usable in memory.
+    }
+  }
+
+  return null;
+};
+
+const clearObservationDraft = () => {
+  try {
+    localStorage.removeItem(OBSERVATION_DRAFT_STORAGE_KEY);
+  } catch (error) {
+    console.warn('Unable to clear observation draft:', error);
+  }
+};
+
 interface ResearchLoggerProps {
   onSaveObservation: (obs: GeoTaggedObservation) => void;
   currentCoords: { lat: number; lng: number } | null;
@@ -41,24 +162,46 @@ export const ResearchLogger: React.FC<ResearchLoggerProps> = ({
   onNavigate,
   onClearPreselected
 }) => {
-  const [title, setTitle] = useState<string>('');
-  const [speciesId, setSpeciesId] = useState<string>(preselectedSpecies?.id || preselectedTreeTag?.speciesId || 'rhizophora_mucronata');
-  const [treeTagId, setTreeTagId] = useState<string>(preselectedTreeTag?.tagId || '');
-  const [waterwayZone, setWaterwayZone] = useState<CoastalZone>(preselectedSpecies?.dominantZone || 'seaward_fringe');
-  const [waterwayName, setWaterwayName] = useState<string>(preselectedTreeTag?.waterwayName || 'Sugba Lagoon Cut • Del Carmen');
-  const [lat, setLat] = useState<number>(preselectedTreeTag?.lat || currentCoords?.lat || 9.8655);
-  const [lng, setLng] = useState<number>(preselectedTreeTag?.lng || currentCoords?.lng || 125.9642);
-  const [salinityPpt, setSalinityPpt] = useState<number>(33);
-  const [canopyCoverPercent, setCanopyCoverPercent] = useState<number>(85);
-  const [sedimentType, setSedimentType] = useState<'fine_mud' | 'sandy_peat' | 'coarse_sand' | 'anoxic_ooze'>('fine_mud');
-  const [selectedWildlife, setSelectedWildlife] = useState<string[]>(['Mud Crabs (Alimango)', 'Danggit Fry (Rabbitfish)']);
-  const [trashLevel, setTrashLevel] = useState<'none' | 'light' | 'moderate' | 'severe'>('none');
-  const [erosionRisk, setErosionRisk] = useState<'low' | 'moderate' | 'critical'>('low');
-  const [restorationAction, setRestorationAction] = useState<string>('Routine health survey');
-  const [propagulesPlantedCount, setPropagulesPlantedCount] = useState<number>(0);
-  const [notes, setNotes] = useState<string>('');
-  const [guideName, setGuideName] = useState<string>('Kuya Dan (Lead Siargao Kayak Naturalist)');
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [initialDraft] = useState<ObservationDraft | null>(() => loadObservationDraft());
+  const draftFields = initialDraft?.fields;
+  const [title, setTitle] = useState<string>(
+    preselectedTreeTag
+      ? `Field Survey of Tree Tag #${preselectedTreeTag.tagId}`
+      : preselectedSpecies
+        ? `${preselectedSpecies.localName} (${preselectedSpecies.commonName}) Transect Survey`
+        : draftFields?.title ?? DEFAULT_TITLE
+  );
+  const [speciesId, setSpeciesId] = useState<string>(
+    preselectedSpecies?.id || preselectedTreeTag?.speciesId || draftFields?.speciesId || 'rhizophora_mucronata'
+  );
+  const [treeTagId, setTreeTagId] = useState<string>(preselectedTreeTag?.tagId || draftFields?.treeTagId || '');
+  const [waterwayZone, setWaterwayZone] = useState<CoastalZone>(
+    preselectedSpecies?.dominantZone || draftFields?.waterwayZone || 'seaward_fringe'
+  );
+  const [waterwayName, setWaterwayName] = useState<string>(
+    preselectedTreeTag?.waterwayName || draftFields?.waterwayName || DEFAULT_WATERWAY_NAME
+  );
+  const [lat, setLat] = useState<number>(preselectedTreeTag?.lat ?? draftFields?.lat ?? currentCoords?.lat ?? DEFAULT_LAT);
+  const [lng, setLng] = useState<number>(preselectedTreeTag?.lng ?? draftFields?.lng ?? currentCoords?.lng ?? DEFAULT_LNG);
+  const [salinityPpt, setSalinityPpt] = useState<number>(draftFields?.salinityPpt ?? 33);
+  const [canopyCoverPercent, setCanopyCoverPercent] = useState<number>(draftFields?.canopyCoverPercent ?? 85);
+  const [sedimentType, setSedimentType] = useState<SedimentType>(draftFields?.sedimentType ?? 'fine_mud');
+  const [selectedWildlife, setSelectedWildlife] = useState<string[]>(
+    draftFields?.selectedWildlife ?? DEFAULT_WILDLIFE
+  );
+  const [trashLevel, setTrashLevel] = useState<TrashLevel>(draftFields?.trashLevel ?? 'none');
+  const [erosionRisk, setErosionRisk] = useState<ErosionRisk>(draftFields?.erosionRisk ?? 'low');
+  const [restorationAction, setRestorationAction] = useState<string>(
+    draftFields?.restorationAction ?? DEFAULT_RESTORATION_ACTION
+  );
+  const [propagulesPlantedCount, setPropagulesPlantedCount] = useState<number>(
+    draftFields?.propagulesPlantedCount ?? 0
+  );
+  const [notes, setNotes] = useState<string>(draftFields?.notes ?? '');
+  const [guideName, setGuideName] = useState<string>(draftFields?.guideName ?? DEFAULT_GUIDE_NAME);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(draftFields?.photoUrl ?? null);
+  const [recoveredDraft, setRecoveredDraft] = useState<ObservationDraft | null>(initialDraft);
+  const skipNextAutosave = useRef(true);
 
   const [aiDiagnosis, setAiDiagnosis] = useState<any>(null);
   const [isDiagnosing, setIsDiagnosing] = useState<boolean>(false);
@@ -75,11 +218,149 @@ export const ResearchLogger: React.FC<ResearchLoggerProps> = ({
       setTitle(`Field Survey of Tree Tag #${preselectedTreeTag.tagId}`);
     } else if (preselectedSpecies) {
       setSpeciesId(preselectedSpecies.id);
+      setWaterwayZone(preselectedSpecies.dominantZone);
       setTitle(`${preselectedSpecies.localName} (${preselectedSpecies.commonName}) Transect Survey`);
-    } else if (!title) {
-      setTitle('Del Carmen Lagoon Eco-Health Transect');
     }
   }, [preselectedTreeTag, preselectedSpecies]);
+
+  useEffect(() => {
+    if (skipNextAutosave.current) {
+      skipNextAutosave.current = false;
+      return;
+    }
+
+    const draft: ObservationDraft = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      fields: {
+        title,
+        speciesId,
+        treeTagId,
+        waterwayZone,
+        waterwayName,
+        lat,
+        lng,
+        salinityPpt,
+        canopyCoverPercent,
+        sedimentType,
+        selectedWildlife,
+        trashLevel,
+        erosionRisk,
+        restorationAction,
+        propagulesPlantedCount,
+        notes,
+        guideName,
+        photoUrl,
+      },
+    };
+
+    try {
+      localStorage.setItem(OBSERVATION_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    } catch (error) {
+      if (photoUrl) {
+        try {
+          localStorage.setItem(
+            OBSERVATION_DRAFT_STORAGE_KEY,
+            JSON.stringify({ ...draft, fields: { ...draft.fields, photoUrl: null } })
+          );
+          console.warn('Observation draft saved without its photo attachment:', error);
+          return;
+        } catch {
+          // Report the original storage failure below.
+        }
+      }
+      console.warn('Unable to autosave observation draft:', error);
+    }
+  }, [
+    title,
+    speciesId,
+    treeTagId,
+    waterwayZone,
+    waterwayName,
+    lat,
+    lng,
+    salinityPpt,
+    canopyCoverPercent,
+    sedimentType,
+    selectedWildlife,
+    trashLevel,
+    erosionRisk,
+    restorationAction,
+    propagulesPlantedCount,
+    notes,
+    guideName,
+    photoUrl,
+  ]);
+
+  const handleDiscardRecoveredDraft = () => {
+    const resetFields: ObservationDraftFields = {
+      title: preselectedTreeTag
+        ? `Field Survey of Tree Tag #${preselectedTreeTag.tagId}`
+        : preselectedSpecies
+          ? `${preselectedSpecies.localName} (${preselectedSpecies.commonName}) Transect Survey`
+          : DEFAULT_TITLE,
+      speciesId: preselectedSpecies?.id || preselectedTreeTag?.speciesId || 'rhizophora_mucronata',
+      treeTagId: preselectedTreeTag?.tagId || '',
+      waterwayZone: preselectedSpecies?.dominantZone || 'seaward_fringe',
+      waterwayName: preselectedTreeTag?.waterwayName || DEFAULT_WATERWAY_NAME,
+      lat: preselectedTreeTag?.lat ?? currentCoords?.lat ?? DEFAULT_LAT,
+      lng: preselectedTreeTag?.lng ?? currentCoords?.lng ?? DEFAULT_LNG,
+      salinityPpt: 33,
+      canopyCoverPercent: 85,
+      sedimentType: 'fine_mud',
+      selectedWildlife: DEFAULT_WILDLIFE,
+      trashLevel: 'none',
+      erosionRisk: 'low',
+      restorationAction: DEFAULT_RESTORATION_ACTION,
+      propagulesPlantedCount: 0,
+      notes: '',
+      guideName: DEFAULT_GUIDE_NAME,
+      photoUrl: null,
+    };
+    const currentFields: ObservationDraftFields = {
+      title,
+      speciesId,
+      treeTagId,
+      waterwayZone,
+      waterwayName,
+      lat,
+      lng,
+      salinityPpt,
+      canopyCoverPercent,
+      sedimentType,
+      selectedWildlife,
+      trashLevel,
+      erosionRisk,
+      restorationAction,
+      propagulesPlantedCount,
+      notes,
+      guideName,
+      photoUrl,
+    };
+
+    skipNextAutosave.current = JSON.stringify(currentFields) !== JSON.stringify(resetFields);
+    clearObservationDraft();
+    setRecoveredDraft(null);
+    setTitle(resetFields.title);
+    setSpeciesId(resetFields.speciesId);
+    setTreeTagId(resetFields.treeTagId);
+    setWaterwayZone(resetFields.waterwayZone);
+    setWaterwayName(resetFields.waterwayName);
+    setLat(resetFields.lat);
+    setLng(resetFields.lng);
+    setSalinityPpt(resetFields.salinityPpt);
+    setCanopyCoverPercent(resetFields.canopyCoverPercent);
+    setSedimentType(resetFields.sedimentType);
+    setSelectedWildlife(resetFields.selectedWildlife);
+    setTrashLevel(resetFields.trashLevel);
+    setErosionRisk(resetFields.erosionRisk);
+    setRestorationAction(resetFields.restorationAction);
+    setPropagulesPlantedCount(resetFields.propagulesPlantedCount);
+    setNotes(resetFields.notes);
+    setGuideName(resetFields.guideName);
+    setPhotoUrl(resetFields.photoUrl);
+    setAiDiagnosis(null);
+  };
 
   // Compute Mangrove Health Index (MHI)
   const mhiCalculation = calculateMHI({
@@ -143,6 +424,8 @@ export const ResearchLogger: React.FC<ResearchLoggerProps> = ({
     };
 
     onSaveObservation(newObservation);
+    clearObservationDraft();
+    setRecoveredDraft(null);
     setLastSavedId(newId);
     setSavedSuccess(true);
     if (onClearPreselected) onClearPreselected();
@@ -239,6 +522,30 @@ export const ResearchLogger: React.FC<ResearchLoggerProps> = ({
           )}
         </div>
       </div>
+
+      {recoveredDraft && !savedSuccess && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <Clock className="w-5 h-5 text-amber-700 mt-0.5 shrink-0" />
+              <div>
+                <h3 className="text-sm font-bold text-amber-950">Recovered your unsaved observation</h3>
+                <p className="text-xs text-amber-800 mt-0.5">
+                  Draft restored from {new Date(recoveredDraft.updatedAt).toLocaleString()}. You can continue editing or reset the form.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleDiscardRecoveredDraft}
+              className="px-3.5 py-2 rounded-xl bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-semibold transition flex items-center justify-center gap-1.5 shrink-0"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Discard Draft &amp; Reset</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* SUCCESS CONFIRMATION BANNER */}
       {savedSuccess && (
@@ -347,9 +654,10 @@ export const ResearchLogger: React.FC<ResearchLoggerProps> = ({
                 className="w-full text-xs p-2.5 rounded-xl border border-stone-300 focus:outline-emerald-700 bg-white"
               >
                 <option value="seaward_fringe">Seaward Fringe (High Wave &amp; Tidal Energy)</option>
-                <option value="middle_interior">Middle Interior (Dense Stilt Canopy &amp; Channels)</option>
-                <option value="landward_high_marsh">Landward High Marsh (Hypersaline / Spring Tides)</option>
-                <option value="brackish_riverine">Brackish Riverine &amp; Estuary Creeks</option>
+                <option value="mid_intertidal">Mid-Intertidal Creek (Dense Stilt Canopy &amp; Channels)</option>
+                <option value="inland_basin">Inland Basin (Hypersaline / Spring Tides)</option>
+                <option value="riverine_channel">Riverine Channel &amp; Estuary Creeks</option>
+                <option value="coastal_transition">Coastal Transition / High Marsh</option>
               </select>
             </div>
           </div>
@@ -496,7 +804,7 @@ export const ResearchLogger: React.FC<ResearchLoggerProps> = ({
               </label>
               <select
                 value={trashLevel}
-                onChange={(e) => setTrashLevel(e.target.value as any)}
+                onChange={(e) => setTrashLevel(e.target.value as TrashLevel)}
                 className="w-full text-xs p-2.5 rounded-xl border border-stone-300 focus:outline-emerald-700 bg-white"
               >
                 <option value="none">None (Pristine waterway)</option>
@@ -512,7 +820,7 @@ export const ResearchLogger: React.FC<ResearchLoggerProps> = ({
               </label>
               <select
                 value={erosionRisk}
-                onChange={(e) => setErosionRisk(e.target.value as any)}
+                onChange={(e) => setErosionRisk(e.target.value as ErosionRisk)}
                 className="w-full text-xs p-2.5 rounded-xl border border-stone-300 focus:outline-emerald-700 bg-white"
               >
                 <option value="low">Low (Stable vegetated bank)</option>

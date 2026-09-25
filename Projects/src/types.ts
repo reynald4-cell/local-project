@@ -6,6 +6,24 @@ export type LeafType = 'waxy_elliptic' | 'salt_excreting_silvery' | 'petiole_gla
 
 export type HealthStatus = 'pristine' | 'healthy' | 'vulnerable' | 'degraded';
 
+export type GpsErrorReason =
+  | 'unsupported'
+  | 'permission-denied'
+  | 'position-unavailable'
+  | 'timeout'
+  | 'unknown';
+
+export type GpsStatus =
+  | {
+      state: 'fallback' | 'acquiring' | 'success';
+      message: string;
+    }
+  | {
+      state: 'error';
+      reason: GpsErrorReason;
+      message: string;
+    };
+
 export interface MangroveSpecies {
   id: string;
   commonName: string;

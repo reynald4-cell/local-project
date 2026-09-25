@@ -13,13 +13,43 @@ import {
   TreeTagData, 
   GeoTaggedObservation, 
   MangroveSpecies, 
-  RestorationProject 
+  RestorationProject,
+  GpsStatus,
 } from './types';
 import { 
   INITIAL_TREE_TAGS, 
   INITIAL_OBSERVATIONS, 
   RESTORATION_PROJECTS, 
 } from './data/mangroveDatabase';
+
+const getGeolocationErrorStatus = (error: GeolocationPositionError): GpsStatus => {
+  switch (error.code) {
+    case error.PERMISSION_DENIED:
+      return {
+        state: 'error',
+        reason: 'permission-denied',
+        message: 'Location permission denied. Allow location access, then retry. Keeping current coordinates.',
+      };
+    case error.POSITION_UNAVAILABLE:
+      return {
+        state: 'error',
+        reason: 'position-unavailable',
+        message: 'GPS position is unavailable. Move to an open area and retry. Keeping current coordinates.',
+      };
+    case error.TIMEOUT:
+      return {
+        state: 'error',
+        reason: 'timeout',
+        message: 'GPS acquisition timed out. Check your signal and retry. Keeping current coordinates.',
+      };
+    default:
+      return {
+        state: 'error',
+        reason: 'unknown',
+        message: 'GPS could not determine your location. Retry when ready. Keeping current coordinates.',
+      };
+  }
+};
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('home');
@@ -54,7 +84,10 @@ export default function App() {
     lat: 9.8722,
     lng: 125.9683,
   });
-  const [isLocating, setIsLocating] = useState<boolean>(false);
+  const [gpsStatus, setGpsStatus] = useState<GpsStatus>({
+    state: 'fallback',
+    message: 'Using fallback coordinates for Del Carmen, Siargao. Update GPS for your live position.',
+  });
 
   // Direct research input selection state
   const [preselectedTreeTag, setPreselectedTreeTag] = useState<TreeTagData | null>(null);
@@ -97,25 +130,37 @@ export default function App() {
 
   // Acquire live GPS position
   const handleGetLocation = () => {
-    setIsLocating(true);
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setCoords({
-            lat: Number(pos.coords.latitude.toFixed(5)),
-            lng: Number(pos.coords.longitude.toFixed(5)),
-          });
-          setIsLocating(false);
-        },
-        (err) => {
-          console.warn('Geolocation error, maintaining Siargao Mangrove coordinates:', err);
-          setIsLocating(false);
-        },
-        { timeout: 10000, enableHighAccuracy: true }
-      );
-    } else {
-      setIsLocating(false);
+    setGpsStatus({
+      state: 'acquiring',
+      message: 'Acquiring your live GPS position...',
+    });
+
+    if (!('geolocation' in navigator)) {
+      setGpsStatus({
+        state: 'error',
+        reason: 'unsupported',
+        message: 'This browser does not support GPS location. Keeping the Del Carmen fallback coordinates.',
+      });
+      return;
     }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords({
+          lat: Number(pos.coords.latitude.toFixed(5)),
+          lng: Number(pos.coords.longitude.toFixed(5)),
+        });
+        setGpsStatus({
+          state: 'success',
+          message: 'Live GPS position acquired.',
+        });
+      },
+      (error) => {
+        console.warn('Geolocation error, maintaining current coordinates:', error);
+        setGpsStatus(getGeolocationErrorStatus(error));
+      },
+      { timeout: 10000, enableHighAccuracy: true }
+    );
   };
 
   // Sync Offline Queue
@@ -181,7 +226,7 @@ export default function App() {
         isSyncing={isSyncing}
         coords={coords}
         onGetLocation={handleGetLocation}
-        isLocating={isLocating}
+        gpsStatus={gpsStatus}
       />
 
       {/* Main Content Area - with bottom padding on mobile to accommodate bottom navigation */}
@@ -196,7 +241,7 @@ export default function App() {
             isSyncing={isSyncing}
             coords={coords}
             onGetLocation={handleGetLocation}
-            isLocating={isLocating}
+            gpsStatus={gpsStatus}
             treeTags={treeTags}
             observations={observations}
           />
