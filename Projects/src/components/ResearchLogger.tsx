@@ -23,6 +23,7 @@ import { GeoTaggedObservation, CoastalZone, MangroveSpecies, TreeTagData } from 
 import { MANGROVE_SPECIES, calculateMHI } from '../data/mangroveDatabase';
 
 const OBSERVATION_DRAFT_STORAGE_KEY = 'MANGROVE_OBSERVATION_DRAFT_V1';
+const OBSERVATION_DRAFT_BACKUP_STORAGE_KEY = `${OBSERVATION_DRAFT_STORAGE_KEY}_BACKUP`;
 const DEFAULT_TITLE = 'Del Carmen Lagoon Eco-Health Transect';
 const DEFAULT_WATERWAY_NAME = 'Sugba Lagoon Cut • Del Carmen';
 const DEFAULT_LAT = 9.8655;
@@ -56,29 +57,36 @@ interface ObservationDraftFields {
   photoUrl: string | null;
 }
 
-interface ObservationDraft {
+export interface ObservationDraft {
   version: 1;
   updatedAt: string;
   fields: ObservationDraftFields;
 }
 
 const isString = (value: unknown): value is string => typeof value === 'string';
+const isBoundedString = (value: unknown, maxLength: number, allowEmpty = true): value is string =>
+  isString(value) && value.length <= maxLength && (allowEmpty || value.trim().length > 0);
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 const isOneOf = <T extends string>(value: unknown, options: readonly T[]): value is T =>
   typeof value === 'string' && options.includes(value as T);
+const isIsoTimestamp = (value: unknown): value is string => {
+  if (!isString(value)) return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
+};
 
 const isValidDraftFields = (value: unknown): value is ObservationDraftFields => {
   if (!value || typeof value !== 'object') return false;
 
   const fields = value as Record<string, unknown>;
   return (
-    isString(fields.title) &&
-    isString(fields.speciesId) &&
+    isBoundedString(fields.title, 160, false) &&
+    isBoundedString(fields.speciesId, 80, false) &&
     MANGROVE_SPECIES.some((species) => species.id === fields.speciesId) &&
-    isString(fields.treeTagId) &&
+    isBoundedString(fields.treeTagId, 80) &&
     isOneOf(fields.waterwayZone, ['seaward_fringe', 'mid_intertidal', 'inland_basin', 'riverine_channel', 'coastal_transition']) &&
-    isString(fields.waterwayName) &&
+    isBoundedString(fields.waterwayName, 160, false) &&
     isFiniteNumber(fields.lat) &&
     fields.lat >= -90 &&
     fields.lat <= 90 &&
@@ -93,51 +101,85 @@ const isValidDraftFields = (value: unknown): value is ObservationDraftFields => 
     fields.canopyCoverPercent <= 100 &&
     isOneOf(fields.sedimentType, ['fine_mud', 'sandy_peat', 'coarse_sand', 'anoxic_ooze']) &&
     Array.isArray(fields.selectedWildlife) &&
-    fields.selectedWildlife.every(isString) &&
+    fields.selectedWildlife.length <= 20 &&
+    fields.selectedWildlife.every((item) => isBoundedString(item, 100, false)) &&
+    new Set(fields.selectedWildlife).size === fields.selectedWildlife.length &&
     isOneOf(fields.trashLevel, ['none', 'light', 'moderate', 'severe']) &&
     isOneOf(fields.erosionRisk, ['low', 'moderate', 'critical']) &&
-    isString(fields.restorationAction) &&
+    isBoundedString(fields.restorationAction, 500) &&
     isFiniteNumber(fields.propagulesPlantedCount) &&
+    Number.isInteger(fields.propagulesPlantedCount) &&
     fields.propagulesPlantedCount >= 0 &&
-    isString(fields.notes) &&
-    isString(fields.guideName) &&
-    (fields.photoUrl === null || isString(fields.photoUrl))
+    fields.propagulesPlantedCount <= 100000 &&
+    isBoundedString(fields.notes, 5000) &&
+    isBoundedString(fields.guideName, 160, false) &&
+    (fields.photoUrl === null ||
+      (isBoundedString(fields.photoUrl, 14_000_000, false) &&
+        /^data:image\/(?:jpeg|png|webp);base64,/i.test(fields.photoUrl)))
   );
 };
 
-const loadObservationDraft = (): ObservationDraft | null => {
-  try {
-    const storedDraft = localStorage.getItem(OBSERVATION_DRAFT_STORAGE_KEY);
-    if (!storedDraft) return null;
+const parseObservationDraft = (storedDraft: string | null): ObservationDraft | null => {
+  if (!storedDraft) return null;
 
+  try {
     const parsed: unknown = JSON.parse(storedDraft);
     if (
       parsed &&
       typeof parsed === 'object' &&
       (parsed as Record<string, unknown>).version === 1 &&
-      isString((parsed as Record<string, unknown>).updatedAt) &&
-      !Number.isNaN(Date.parse((parsed as Record<string, unknown>).updatedAt as string)) &&
+      isIsoTimestamp((parsed as Record<string, unknown>).updatedAt) &&
       isValidDraftFields((parsed as Record<string, unknown>).fields)
     ) {
       return parsed as ObservationDraft;
     }
-
-    localStorage.removeItem(OBSERVATION_DRAFT_STORAGE_KEY);
-  } catch (error) {
-    console.warn('Unable to restore observation draft:', error);
-    try {
-      localStorage.removeItem(OBSERVATION_DRAFT_STORAGE_KEY);
-    } catch {
-      // Storage may be unavailable; the form remains usable in memory.
-    }
+  } catch {
+    return null;
   }
 
   return null;
 };
 
+type DraftStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+
+export const loadObservationDraft = (storage: DraftStorage = localStorage): ObservationDraft | null => {
+  try {
+    const primaryDraft = parseObservationDraft(storage.getItem(OBSERVATION_DRAFT_STORAGE_KEY));
+    if (primaryDraft) return primaryDraft;
+
+    storage.removeItem(OBSERVATION_DRAFT_STORAGE_KEY);
+    const backupDraft = parseObservationDraft(storage.getItem(OBSERVATION_DRAFT_BACKUP_STORAGE_KEY));
+    if (!backupDraft) {
+      storage.removeItem(OBSERVATION_DRAFT_BACKUP_STORAGE_KEY);
+      return null;
+    }
+
+    storage.setItem(OBSERVATION_DRAFT_STORAGE_KEY, JSON.stringify(backupDraft));
+    return backupDraft;
+  } catch (error) {
+    console.warn('Unable to restore observation draft:', error);
+    return null;
+  }
+};
+
+export const persistObservationDraft = (
+  draft: ObservationDraft,
+  storage: DraftStorage = localStorage
+) => {
+  const currentDraft = parseObservationDraft(storage.getItem(OBSERVATION_DRAFT_STORAGE_KEY));
+  if (currentDraft) {
+    storage.setItem(
+      OBSERVATION_DRAFT_BACKUP_STORAGE_KEY,
+      JSON.stringify({ ...currentDraft, fields: { ...currentDraft.fields, photoUrl: null } })
+    );
+  }
+  storage.setItem(OBSERVATION_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+};
+
 const clearObservationDraft = () => {
   try {
     localStorage.removeItem(OBSERVATION_DRAFT_STORAGE_KEY);
+    localStorage.removeItem(OBSERVATION_DRAFT_BACKUP_STORAGE_KEY);
   } catch (error) {
     console.warn('Unable to clear observation draft:', error);
   }
@@ -255,7 +297,7 @@ export const ResearchLogger: React.FC<ResearchLoggerProps> = ({
     };
 
     try {
-      localStorage.setItem(OBSERVATION_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+      persistObservationDraft(draft);
     } catch (error) {
       if (photoUrl) {
         try {
