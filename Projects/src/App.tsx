@@ -214,7 +214,7 @@ export default function App() {
   const pendingSyncCount = observations.filter((o) => o.offlineStatus === 'queued_offline').length;
 
   return (
-    <div className="theme-coastal-minimalist min-h-screen bg-[#f4efe8] text-[#1c2820] flex flex-col font-sans selection:bg-emerald-300 selection:text-emerald-950">
+    <div className="theme-field-mode min-h-screen bg-[#f4efe8] text-[#1c2820] flex flex-col font-sans selection:bg-emerald-300 selection:text-emerald-950">
       {/* Top Header & Nav (Desktop tabs + mobile minimal status bar) */}
       <Header
         activeTab={activeTab}
