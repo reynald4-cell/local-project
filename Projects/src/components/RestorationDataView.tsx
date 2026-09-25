@@ -352,6 +352,7 @@ export const RestorationDataView: React.FC<RestorationDataViewProps> = ({
                 <option value="seaward_fringe">Seaward Fringe</option>
                 <option value="mid_intertidal">Mid-Intertidal Creek</option>
                 <option value="inland_basin">Inland Basin</option>
+                <option value="riverine_channel">Riverine Channel</option>
                 <option value="coastal_transition">Upland Transition</option>
               </select>
             </label>
@@ -418,7 +419,7 @@ export const RestorationDataView: React.FC<RestorationDataViewProps> = ({
                   </span>
                   <span className="flex items-center gap-1">
                     <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                    {obs.waterwayName} ({obs.lat.toFixed(4)}°N, {obs.lng.toFixed(4)}°W)
+                    {obs.waterwayName} ({obs.lat.toFixed(4)}°N, {obs.lng.toFixed(4)}°E)
                   </span>
                   <span className="flex items-center gap-1">
                     <Droplets className="w-3.5 h-3.5 text-blue-500" />

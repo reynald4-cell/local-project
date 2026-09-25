@@ -654,9 +654,10 @@ export const ResearchLogger: React.FC<ResearchLoggerProps> = ({
                 className="w-full text-xs p-2.5 rounded-xl border border-stone-300 focus:outline-emerald-700 bg-white"
               >
                 <option value="seaward_fringe">Seaward Fringe (High Wave &amp; Tidal Energy)</option>
-                <option value="middle_interior">Middle Interior (Dense Stilt Canopy &amp; Channels)</option>
-                <option value="landward_high_marsh">Landward High Marsh (Hypersaline / Spring Tides)</option>
-                <option value="brackish_riverine">Brackish Riverine &amp; Estuary Creeks</option>
+                <option value="mid_intertidal">Mid-Intertidal Creek (Dense Stilt Canopy &amp; Channels)</option>
+                <option value="inland_basin">Inland Basin (Hypersaline / Spring Tides)</option>
+                <option value="riverine_channel">Riverine Channel &amp; Estuary Creeks</option>
+                <option value="coastal_transition">Coastal Transition / High Marsh</option>
               </select>
             </div>
           </div>
