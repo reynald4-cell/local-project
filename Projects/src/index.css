@@ -1,1 +1,111 @@
 @import "tailwindcss";
+
+.theme-coastal-minimalist {
+  --coastal-ink: #17323a;
+  --coastal-muted: #5f7880;
+  --coastal-line: #cfe0e2;
+  --coastal-paper: #ffffff;
+  --coastal-wash: #edf7f6;
+  --coastal-sea: #167d82;
+  --coastal-sun: #e7a83e;
+  background:
+    radial-gradient(circle at 12% 8%, rgb(129 209 203 / 18%), transparent 24rem),
+    linear-gradient(180deg, #f8fcfb 0%, #edf6f4 100%) !important;
+  color: var(--coastal-ink) !important;
+  letter-spacing: 0.01em;
+}
+
+.theme-coastal-minimalist header {
+  background: rgb(255 255 255 / 94%) !important;
+  border-color: var(--coastal-line) !important;
+  box-shadow: 0 8px 28px rgb(25 79 84 / 8%) !important;
+  color: var(--coastal-ink) !important;
+  backdrop-filter: blur(18px);
+}
+
+.theme-coastal-minimalist header > div:first-child {
+  background: #e9f5f3 !important;
+  border-color: #d2e8e5 !important;
+}
+
+.theme-coastal-minimalist footer {
+  background: #e6f2f0 !important;
+  border-color: var(--coastal-line) !important;
+  color: var(--coastal-muted) !important;
+}
+
+.theme-coastal-minimalist main {
+  padding-top: 2rem;
+}
+
+.theme-coastal-minimalist [class*="bg-gradient-to-br"],
+.theme-coastal-minimalist [class*="bg-gradient-to-r"] {
+  background-image: linear-gradient(135deg, #ffffff 0%, #e8f7f5 100%) !important;
+  border-color: #b8dad7 !important;
+  color: var(--coastal-ink) !important;
+  box-shadow: 0 18px 50px rgb(30 93 99 / 10%) !important;
+}
+
+.theme-coastal-minimalist [class*="bg-white"] {
+  background-color: rgb(255 255 255 / 92%) !important;
+}
+
+.theme-coastal-minimalist [class*="bg-stone-50"],
+.theme-coastal-minimalist [class*="bg-emerald-50"],
+.theme-coastal-minimalist [class*="bg-teal-50"],
+.theme-coastal-minimalist [class*="bg-amber-50"] {
+  background-color: var(--coastal-wash) !important;
+}
+
+.theme-coastal-minimalist [class*="bg-emerald-8"],
+.theme-coastal-minimalist [class*="bg-emerald-9"],
+.theme-coastal-minimalist [class*="bg-[#1"],
+.theme-coastal-minimalist [class*="bg-[#2"] {
+  background-color: var(--coastal-sea) !important;
+}
+
+.theme-coastal-minimalist [class*="text-white"],
+.theme-coastal-minimalist [class*="text-[#fbf8f3]"] {
+  color: var(--coastal-ink) !important;
+}
+
+.theme-coastal-minimalist [class*="text-emerald-1"],
+.theme-coastal-minimalist [class*="text-emerald-2"],
+.theme-coastal-minimalist [class*="text-emerald-3"],
+.theme-coastal-minimalist [class*="text-emerald-7"],
+.theme-coastal-minimalist [class*="text-emerald-8"],
+.theme-coastal-minimalist [class*="text-emerald-9"],
+.theme-coastal-minimalist [class*="text-stone-5"],
+.theme-coastal-minimalist [class*="text-stone-6"],
+.theme-coastal-minimalist [class*="text-stone-9"] {
+  color: var(--coastal-muted) !important;
+}
+
+.theme-coastal-minimalist button,
+.theme-coastal-minimalist input,
+.theme-coastal-minimalist textarea,
+.theme-coastal-minimalist select {
+  border-radius: 0.85rem !important;
+}
+
+.theme-coastal-minimalist main button[class*="shadow"],
+.theme-coastal-minimalist main [class*="rounded-2xl"] {
+  border-color: var(--coastal-line) !important;
+  box-shadow: 0 10px 32px rgb(30 93 99 / 8%) !important;
+}
+
+.theme-coastal-minimalist button:hover {
+  border-color: #79b9b6 !important;
+}
+
+.theme-coastal-minimalist [class*="bg-amber-4"],
+.theme-coastal-minimalist [class*="bg-amber-5"] {
+  background-color: #f3c66c !important;
+}
+
+.theme-coastal-minimalist h1,
+.theme-coastal-minimalist h2,
+.theme-coastal-minimalist h3 {
+  color: var(--coastal-ink) !important;
+  letter-spacing: -0.025em;
+}
