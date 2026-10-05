@@ -72,3 +72,21 @@ test('rejects malformed timestamps and out-of-range field values', () => {
   assert.equal(loadObservationDraft(storage), null);
   assert.equal(storage.getItem('MANGROVE_OBSERVATION_DRAFT_V1'), null);
 });
+
+test('keeps photos out of backup drafts while preserving the latest primary draft', () => {
+  const storage = new MemoryStorage();
+  const firstDraft = createDraft('first autosave');
+  firstDraft.fields.photoUrl = 'data:image/jpeg;base64,large-photo';
+  const latestDraft = createDraft('latest autosave');
+  latestDraft.fields.photoUrl = 'data:image/jpeg;base64,new-photo';
+
+  persistObservationDraft(firstDraft, storage);
+  persistObservationDraft(latestDraft, storage);
+
+  const primary = JSON.parse(storage.getItem('MANGROVE_OBSERVATION_DRAFT_V1') ?? '{}');
+  const backup = JSON.parse(storage.getItem('MANGROVE_OBSERVATION_DRAFT_V1_BACKUP') ?? '{}');
+
+  assert.equal(primary.fields.photoUrl, latestDraft.fields.photoUrl);
+  assert.equal(backup.fields.notes, firstDraft.fields.notes);
+  assert.equal(backup.fields.photoUrl, null);
+});
