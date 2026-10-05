@@ -33,17 +33,17 @@ This project helps researchers, guides, and restoration teams:
 
 ```text
 .
-├── src/                 # React app source
-├── public/              # Static assets
-├── dist/                # Production build output
-├── server.ts            # Express + Gemini integration
-├── index.html           # Vite entry point
-├── package.json         # Scripts and dependencies
-├── tsconfig.json        # TypeScript config
-├── vite.config.ts       # Vite config
-├── .env.local           # Local environment variables
-├── .gitignore
-├── bun.lock
+├── Projects/
+│   ├── src/             # React app source
+│   ├── dist/            # Production build output
+│   ├── server.ts        # Express + Gemini integration
+│   ├── index.html       # Vite entry point
+│   ├── package.json     # Scripts and dependencies
+│   ├── tsconfig.json    # TypeScript config
+│   ├── vite.config.ts   # Vite config
+│   ├── .env.local       # Local environment variables
+│   ├── .gitignore
+│   └── bun.lock
 └── README.md
 ```
 
@@ -58,6 +58,7 @@ This project helps researchers, guides, and restoration teams:
 ### Install dependencies
 
 ```bash
+cd Projects
 npm install
 ```
 
