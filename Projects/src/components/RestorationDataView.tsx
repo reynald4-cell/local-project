@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   FileText, 
   Download, 
@@ -12,9 +12,11 @@ import {
   Calendar, 
   Trash2,
   Filter,
-  Layers
+  Search
 } from 'lucide-react';
 import { GeoTaggedObservation, RestorationProject } from '../types';
+
+type ObservationSort = 'newest' | 'oldest' | 'health-high' | 'health-low';
 
 interface RestorationDataViewProps {
   observations: GeoTaggedObservation[];
@@ -35,6 +37,8 @@ export const RestorationDataView: React.FC<RestorationDataViewProps> = ({
 }) => {
   const [filterZone, setFilterZone] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<ObservationSort>('newest');
   const [selectedObs, setSelectedObs] = useState<GeoTaggedObservation | null>(null);
 
   const pendingOfflineLogs = observations.filter((o) => o.offlineStatus === 'queued_offline');
@@ -45,13 +49,43 @@ export const RestorationDataView: React.FC<RestorationDataViewProps> = ({
     ? Math.round(observations.reduce((acc, curr) => acc + (curr.healthScoreMHI || 75), 0) / observations.length)
     : 85;
 
-  // Filter observations
-  const filteredObservations = observations.filter((obs) => {
-    if (filterZone !== 'all' && obs.waterwayZone !== filterZone) return false;
-    if (filterStatus === 'queued' && obs.offlineStatus !== 'queued_offline') return false;
-    if (filterStatus === 'synced' && obs.offlineStatus !== 'synced') return false;
-    return true;
-  });
+  const filteredObservations = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+
+    return observations
+      .filter((obs) => {
+        if (filterZone !== 'all' && obs.waterwayZone !== filterZone) return false;
+        if (filterStatus === 'queued' && obs.offlineStatus !== 'queued_offline') return false;
+        if (filterStatus === 'synced' && obs.offlineStatus !== 'synced') return false;
+
+        if (normalizedQuery) {
+          const searchableFields = [
+            obs.title,
+            obs.speciesName,
+            obs.waterwayName,
+            obs.treeTagId,
+            obs.guideName,
+          ];
+
+          if (!searchableFields.some((field) => field?.toLocaleLowerCase().includes(normalizedQuery))) {
+            return false;
+          }
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'health-high') {
+          return (b.healthScoreMHI ?? 85) - (a.healthScoreMHI ?? 85);
+        }
+        if (sortBy === 'health-low') {
+          return (a.healthScoreMHI ?? 85) - (b.healthScoreMHI ?? 85);
+        }
+
+        const timestampDifference = new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        return sortBy === 'oldest' ? -timestampDifference : timestampDifference;
+      });
+  }, [filterStatus, filterZone, observations, searchQuery, sortBy]);
 
   // Export to GeoJSON
   const handleExportGeoJson = () => {
@@ -282,34 +316,73 @@ export const RestorationDataView: React.FC<RestorationDataViewProps> = ({
 
       {/* Filter and Observations Table / Cards */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex flex-col gap-3">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
             <Filter className="w-4 h-4 text-emerald-600" />
-            Field Transect Observations ({filteredObservations.length})
+            Field Transect Observations
+            <span className="font-medium text-slate-500" aria-live="polite">
+              ({filteredObservations.length} of {observations.length})
+            </span>
           </h3>
 
-          <div className="flex items-center space-x-2 text-xs">
-            <select
-              value={filterZone}
-              onChange={(e) => setFilterZone(e.target.value)}
-              className="p-1.5 rounded border border-slate-300 bg-white"
-            >
-              <option value="all">All Coastal Zones</option>
-              <option value="seaward_fringe">Seaward Fringe</option>
-              <option value="mid_intertidal">Mid-Intertidal Creek</option>
-              <option value="inland_basin">Inland Basin</option>
-              <option value="coastal_transition">Upland Transition</option>
-            </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(14rem,1fr)_auto_auto_auto] gap-2 text-xs">
+            <label className="relative">
+              <span className="sr-only">Search observations</span>
+              <Search
+                className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+                aria-hidden="true"
+              />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search title, species, waterway, tag, or guide"
+                className="w-full rounded border border-slate-300 bg-white py-1.5 pl-8 pr-2 text-slate-900 placeholder:text-slate-400"
+              />
+            </label>
 
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="p-1.5 rounded border border-slate-300 bg-white"
-            >
-              <option value="all">All Sync Status</option>
-              <option value="queued">Queued (Offline)</option>
-              <option value="synced">Synced (Cloud)</option>
-            </select>
+            <label>
+              <span className="sr-only">Filter observations by coastal zone</span>
+              <select
+                value={filterZone}
+                onChange={(e) => setFilterZone(e.target.value)}
+                className="w-full p-1.5 rounded border border-slate-300 bg-white"
+              >
+                <option value="all">All Coastal Zones</option>
+                <option value="seaward_fringe">Seaward Fringe</option>
+                <option value="mid_intertidal">Mid-Intertidal Creek</option>
+                <option value="inland_basin">Inland Basin</option>
+                <option value="riverine_channel">Riverine Channel</option>
+                <option value="coastal_transition">Upland Transition</option>
+              </select>
+            </label>
+
+            <label>
+              <span className="sr-only">Filter observations by sync status</span>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full p-1.5 rounded border border-slate-300 bg-white"
+              >
+                <option value="all">All Sync Status</option>
+                <option value="queued">Queued (Offline)</option>
+                <option value="synced">Synced (Cloud)</option>
+              </select>
+            </label>
+
+            <label>
+              <span className="sr-only">Sort observations</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as ObservationSort)}
+                className="w-full p-1.5 rounded border border-slate-300 bg-white"
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="health-high">Health: high to low</option>
+                <option value="health-low">Health: low to high</option>
+              </select>
+            </label>
           </div>
         </div>
 
@@ -346,7 +419,7 @@ export const RestorationDataView: React.FC<RestorationDataViewProps> = ({
                   </span>
                   <span className="flex items-center gap-1">
                     <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                    {obs.waterwayName} ({obs.lat.toFixed(4)}°N, {obs.lng.toFixed(4)}°W)
+                    {obs.waterwayName} ({obs.lat.toFixed(4)}°N, {obs.lng.toFixed(4)}°E)
                   </span>
                   <span className="flex items-center gap-1">
                     <Droplets className="w-3.5 h-3.5 text-blue-500" />
@@ -381,8 +454,15 @@ export const RestorationDataView: React.FC<RestorationDataViewProps> = ({
           ))}
 
           {filteredObservations.length === 0 && (
-            <div className="p-8 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl">
-              <p className="text-xs">No observation logs match the selected filter criteria.</p>
+            <div className="p-8 text-center text-slate-500 border border-dashed border-slate-200 rounded-xl">
+              <p className="text-sm font-semibold text-slate-700">
+                {observations.length === 0 ? 'No observation logs yet' : 'No matching observations'}
+              </p>
+              <p className="mt-1 text-xs">
+                {observations.length === 0
+                  ? 'Recorded field observations will appear here.'
+                  : 'Try a different search term or broaden the zone and sync status filters.'}
+              </p>
             </div>
           )}
         </div>

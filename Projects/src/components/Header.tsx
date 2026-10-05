@@ -13,8 +13,10 @@ import {
   Sparkles,
   RefreshCw,
   Home,
-  Waves
+  Waves,
+  CircleAlert
 } from 'lucide-react';
+import { GpsStatus } from '../types';
 
 interface HeaderProps {
   activeTab: string;
@@ -26,7 +28,7 @@ interface HeaderProps {
   isSyncing: boolean;
   coords: { lat: number; lng: number } | null;
   onGetLocation: () => void;
-  isLocating: boolean;
+  gpsStatus: GpsStatus;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,9 +41,11 @@ export const Header: React.FC<HeaderProps> = ({
   isSyncing,
   coords,
   onGetLocation,
-  isLocating
+  gpsStatus
 }) => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const isLocating = gpsStatus.state === 'acquiring';
+  const hasGpsError = gpsStatus.state === 'error';
 
   const playGuideAudioIntro = () => {
     if ('speechSynthesis' in window) {
@@ -90,8 +94,13 @@ export const Header: React.FC<HeaderProps> = ({
             id="quick-gps-btn"
             onClick={onGetLocation}
             disabled={isLocating}
-            className="flex items-center space-x-1 px-2 py-1 rounded-md bg-[#1f3627] hover:bg-[#274431] text-emerald-100 border border-[#31563d] transition text-[11px]"
-            title="Update GPS coordinates"
+            aria-describedby="header-gps-status"
+            className={`flex items-center space-x-1 px-2 py-1 rounded-md transition text-[11px] disabled:cursor-wait ${
+              hasGpsError
+                ? 'bg-amber-950/80 hover:bg-amber-900/80 text-amber-100 border border-amber-700'
+                : 'bg-[#1f3627] hover:bg-[#274431] text-emerald-100 border border-[#31563d]'
+            }`}
+            title={hasGpsError ? 'GPS update failed. Retry location.' : 'Update GPS coordinates'}
           >
             <Compass className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin text-amber-400' : 'text-amber-400'}`} />
             <span className="hidden sm:inline">
@@ -99,7 +108,9 @@ export const Header: React.FC<HeaderProps> = ({
                 ? `${coords.lat.toFixed(4)}°N, ${coords.lng.toFixed(4)}°E` 
                 : isLocating ? 'Locating...' : 'GPS'}
             </span>
-            <span className="sm:hidden text-[10px]">{coords ? 'GPS Fix' : 'GPS'}</span>
+            <span className="sm:hidden text-[10px]">
+              {isLocating ? 'Locating' : hasGpsError ? 'Retry GPS' : coords ? 'GPS Fix' : 'GPS'}
+            </span>
           </button>
 
           {/* Compact Offline / Online Toggle */}
@@ -222,6 +233,38 @@ export const Header: React.FC<HeaderProps> = ({
           <span>
             <strong>Offline Mode:</strong> Diagnostics, QR codes &amp; GPS logs work without internet.
           </span>
+        </div>
+      )}
+      {!isLocating && !hasGpsError && (
+        <p id="header-gps-status" className="sr-only" role="status" aria-live="polite">
+          {gpsStatus.message}
+        </p>
+      )}
+      {(isLocating || hasGpsError) && (
+        <div
+          id="header-gps-status"
+          role={hasGpsError ? 'alert' : 'status'}
+          aria-live={hasGpsError ? 'assertive' : 'polite'}
+          className={`px-3 py-1 text-center text-[11px] flex items-center justify-center gap-1.5 ${
+            hasGpsError
+              ? 'bg-amber-950 border-b border-amber-800 text-amber-100'
+              : 'bg-[#1f3627] border-b border-[#31563d] text-emerald-100'
+          }`}
+        >
+          {hasGpsError ? (
+            <CircleAlert className="w-3 h-3 text-amber-400 shrink-0" />
+          ) : (
+            <Compass className="w-3 h-3 text-amber-300 animate-spin shrink-0" />
+          )}
+          <span>{gpsStatus.message}</span>
+          {hasGpsError && (
+            <button
+              onClick={onGetLocation}
+              className="font-semibold underline decoration-amber-400 hover:text-white"
+            >
+              Retry
+            </button>
+          )}
         </div>
       )}
     </header>
