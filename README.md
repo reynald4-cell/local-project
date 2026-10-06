@@ -95,11 +95,10 @@ This repository is structured as a starter project for a coastal mangrove field 
 
 ## License
 
-This project does not include a license file yet. Add one if you plan to publish or share the repository publicly.
+MIT License. See [LICENSE](./LICENSE) for details.
 
 ## Next Improvements
 
-- add a proper project license
 - document the field data schema
 - add CI checks and automated tests
 - add deployment instructions for hosting providers
