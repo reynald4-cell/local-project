@@ -4,26 +4,86 @@ import {
   MapPin, 
   TreePine, 
   QrCode, 
-  Layers, 
-  Crosshair, 
-  Info, 
-  Compass, 
-  CheckCircle2, 
-  AlertCircle,
-  Plus,
-  Waves
+  Crosshair
 } from 'lucide-react';
 import { TreeTagData, GeoTaggedObservation, RestorationProject } from '../types';
+
+interface Coordinates {
+  lat: number;
+  lng: number;
+}
 
 interface KayakTrailMapProps {
   treeTags: TreeTagData[];
   observations: GeoTaggedObservation[];
   restorationProjects: RestorationProject[];
-  userCoords: { lat: number; lng: number } | null;
+  userCoords: Coordinates | null;
   onSelectTree?: (tag: TreeTagData) => void;
   onSelectObservation?: (obs: GeoTaggedObservation) => void;
-  onMapClickToLog?: (coords: { lat: number; lng: number }) => void;
+  onMapClickToLog?: (coords: Coordinates) => void;
 }
+
+type SelectedEntity =
+  | { type: 'tree'; data: TreeTagData }
+  | { type: 'observation'; data: GeoTaggedObservation }
+  | { type: 'restoration'; data: RestorationProject };
+
+type FieldPoint =
+  | { type: 'observation'; data: GeoTaggedObservation }
+  | { type: 'restoration'; data: RestorationProject };
+
+interface NearestResult<T> {
+  item: T;
+  distanceMeters: number;
+}
+
+const EARTH_RADIUS_METERS = 6_371_000;
+
+const isValidCoordinates = ({ lat, lng }: Coordinates) =>
+  Number.isFinite(lat) &&
+  Number.isFinite(lng) &&
+  lat >= -90 &&
+  lat <= 90 &&
+  lng >= -180 &&
+  lng <= 180;
+
+const distanceInMeters = (from: Coordinates, to: Coordinates) => {
+  const toRadians = (degrees: number) => degrees * (Math.PI / 180);
+  const latitudeDelta = toRadians(to.lat - from.lat);
+  const longitudeDelta = toRadians(to.lng - from.lng);
+  const fromLatitude = toRadians(from.lat);
+  const toLatitude = toRadians(to.lat);
+
+  const haversine =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(fromLatitude) *
+      Math.cos(toLatitude) *
+      Math.sin(longitudeDelta / 2) ** 2;
+
+  return 2 * EARTH_RADIUS_METERS * Math.asin(Math.sqrt(Math.min(1, haversine)));
+};
+
+const findNearest = <T,>(
+  origin: Coordinates,
+  items: T[],
+  getCoordinates: (item: T) => Coordinates
+): NearestResult<T> | null =>
+  items.reduce<NearestResult<T> | null>((nearest, item) => {
+    const coordinates = getCoordinates(item);
+    if (!isValidCoordinates(coordinates)) {
+      return nearest;
+    }
+
+    const distanceMeters = distanceInMeters(origin, coordinates);
+    return !nearest || distanceMeters < nearest.distanceMeters
+      ? { item, distanceMeters }
+      : nearest;
+  }, null);
+
+const formatDistance = (distanceMeters: number) =>
+  distanceMeters < 1000
+    ? `${Math.round(distanceMeters)} m`
+    : `${(distanceMeters / 1000).toFixed(1)} km`;
 
 export const KayakTrailMap: React.FC<KayakTrailMapProps> = ({
   treeTags,
@@ -34,11 +94,22 @@ export const KayakTrailMap: React.FC<KayakTrailMapProps> = ({
   onSelectObservation,
   onMapClickToLog,
 }) => {
-  const [selectedEntity, setSelectedEntity] = useState<any>(null);
+  const [selectedEntity, setSelectedEntity] = useState<SelectedEntity | null>(null);
   const [showTrees, setShowTrees] = useState(true);
   const [showObservations, setShowObservations] = useState(true);
   const [showRestoration, setShowRestoration] = useState(true);
   const [showTrail, setShowTrail] = useState(true);
+  const validUserCoords = userCoords && isValidCoordinates(userCoords) ? userCoords : null;
+  const nearestTree = validUserCoords
+    ? findNearest(validUserCoords, treeTags, ({ lat, lng }) => ({ lat, lng }))
+    : null;
+  const fieldPoints: FieldPoint[] = [
+    ...observations.map((data): FieldPoint => ({ type: 'observation', data })),
+    ...restorationProjects.map((data): FieldPoint => ({ type: 'restoration', data })),
+  ];
+  const nearestFieldPoint = validUserCoords
+    ? findNearest(validUserCoords, fieldPoints, ({ data }) => ({ lat: data.lat, lng: data.lng }))
+    : null;
 
   // Map bounding box coordinates for Del Carmen Siargao Mangrove Reserve
   // Center roughly: 9.8660° N, 125.9660° E
@@ -120,6 +191,81 @@ export const KayakTrailMap: React.FC<KayakTrailMapProps> = ({
           </button>
         </div>
       </div>
+
+      <section
+        aria-labelledby="nearest-guidance-heading"
+        aria-live="polite"
+        className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"
+      >
+        <div className="flex items-center gap-2">
+          <Crosshair className="h-4 w-4 text-emerald-700" aria-hidden="true" />
+          <h3 id="nearest-guidance-heading" className="text-sm font-bold text-stone-900">
+            Nearest from your kayak
+          </h3>
+        </div>
+
+        {!validUserCoords ? (
+          <p className="mt-1 text-xs text-stone-600">
+            Location unavailable. Update your GPS position to see nearby trail points.
+          </p>
+        ) : !nearestTree && !nearestFieldPoint ? (
+          <p className="mt-1 text-xs text-stone-600">
+            No tagged trees, observations, or restoration sites are available yet.
+          </p>
+        ) : (
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {nearestTree ? (
+              <button
+                type="button"
+                onClick={() => setSelectedEntity({ type: 'tree', data: nearestTree.item })}
+                className="rounded-xl border border-sky-200 bg-white px-3 py-2 text-left transition hover:border-sky-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
+                aria-label={`View nearest tagged tree ${nearestTree.item.tagId}, ${formatDistance(nearestTree.distanceMeters)} away`}
+              >
+                <span className="block text-[11px] font-bold uppercase tracking-wide text-sky-800">
+                  Nearest tagged tree
+                </span>
+                <span className="mt-0.5 block text-sm font-semibold text-stone-900">
+                  {nearestTree.item.tagId} · {formatDistance(nearestTree.distanceMeters)}
+                </span>
+                <span className="block truncate text-xs text-stone-600">
+                  {nearestTree.item.commonName}
+                </span>
+              </button>
+            ) : (
+              <p className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-500">
+                No tagged trees available.
+              </p>
+            )}
+
+            {nearestFieldPoint ? (
+              <button
+                type="button"
+                onClick={() => setSelectedEntity(nearestFieldPoint.item)}
+                className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-left transition hover:border-amber-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                aria-label={`View nearest ${
+                  nearestFieldPoint.item.type === 'observation' ? 'observation' : 'restoration site'
+                }, ${formatDistance(nearestFieldPoint.distanceMeters)} away`}
+              >
+                <span className="block text-[11px] font-bold uppercase tracking-wide text-amber-800">
+                  Nearest {nearestFieldPoint.item.type === 'observation' ? 'observation' : 'restoration site'}
+                </span>
+                <span className="mt-0.5 block text-sm font-semibold text-stone-900">
+                  {formatDistance(nearestFieldPoint.distanceMeters)}
+                </span>
+                <span className="block truncate text-xs text-stone-600">
+                  {nearestFieldPoint.item.type === 'observation'
+                    ? nearestFieldPoint.item.data.title
+                    : nearestFieldPoint.item.data.siteName}
+                </span>
+              </button>
+            ) : (
+              <p className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-500">
+                No observations or restoration sites available.
+              </p>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* Main Map Container with Earth Colors (Deep Tidal Blue, Forest Greens, Warm Sand) */}
       <div className="relative bg-[#10232e] rounded-3xl overflow-hidden shadow-lg border border-[#1b3f4f]">
@@ -260,8 +406,8 @@ export const KayakTrailMap: React.FC<KayakTrailMapProps> = ({
           })}
 
           {/* Current Live Kayak User Position */}
-          {userCoords && (() => {
-            const { x, y } = coordsToSvg(userCoords.lat, userCoords.lng);
+          {validUserCoords && (() => {
+            const { x, y } = coordsToSvg(validUserCoords.lat, validUserCoords.lng);
             return (
               <g>
                 <circle cx={x} cy={y} r="24" fill="#10b981" opacity="0.3" className="animate-pulse pointer-events-none" />
