@@ -1,3 +1,10 @@
+/**
+ * App
+ *
+ * Root component for the Mangrove Field Guide. Wires together the
+ * species guide, QR tree scanner, kayak trail map, and research logger
+ * into a single tabbed, offline-friendly field research experience.
+ */
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { HomeScreen } from './components/HomeScreen';
